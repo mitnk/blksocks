@@ -28,6 +28,7 @@ async fn main() {
     let addr = config.listen;
     let listener = TcpListener::bind(&addr).await.unwrap();
     log::info!("Server started on {}", &addr);
+    log::info!("using proxy: {}", &config.socks5);
 
     loop {
         let addr_socks5 = config.socks5.clone();
@@ -47,7 +48,6 @@ async fn handle_client(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let dest_addr = utils::get_dest_addr(&client_socket)?;
     log::info!("connecting to {}", &dest_addr);
-    log::info!("using proxy: {}", &addr_socks5);
 
     let downstream_socket = socks5::proxy_conn(addr_socks5, &dest_addr).await?;
 
