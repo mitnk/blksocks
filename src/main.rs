@@ -47,6 +47,7 @@ async fn handle_client(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let dest_addr = utils::get_dest_addr(&client_socket)?;
     log::info!("connecting to {}", &dest_addr);
+    log::info!("using proxy: {}", &addr_socks5);
 
     let downstream_socket = socks5::proxy_conn(addr_socks5, &dest_addr).await?;
 
@@ -77,10 +78,7 @@ async fn handle_client(
 }
 
 fn read_config<P: AsRef<Path>>(path: P) -> Result<Config, Box<dyn std::error::Error>> {
-    // Reading the file as a string
     let contents = fs::read_to_string(path)?;
-
-    // Parsing the string into your configuration struct
     let config: Config = toml::from_str(&contents)?;
 
     Ok(config)
