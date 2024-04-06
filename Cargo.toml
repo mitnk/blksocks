@@ -4,6 +4,10 @@ version = "1.0.0"
 edition = "2021"
 authors = ["Hugo Wang <whgking@gmail.com>"]
 description = "A transparent TCP redirector."
+repository = "https://github.com/mitnk/blksocks"
+keywords = ["tproxy", "linux"]
+categories = ["command-line-utilities"]
+license = "MIT"
 
 [dependencies]
 log = "0.4"
