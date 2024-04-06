@@ -3,6 +3,7 @@ name = "blksocks"
 version = "1.0.0"
 edition = "2021"
 authors = ["Hugo Wang <whgking@gmail.com>"]
+description = "A transparent TCP redirector."
 
 [dependencies]
 log = "0.4"
