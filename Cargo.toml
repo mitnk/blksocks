@@ -1,0 +1,17 @@
+[package]
+name = "blksocks"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+log = "0.4"
+nix = { version = "0.28", features = ["socket", "net"] }
+serde = "1.0"
+serde_derive = "1.0"
+tokio = { version = "1", features = ["full"] }
+toml = "0.8"
+
+[dependencies.simple_logger]
+version = "4.3"
+default-features = false
+features = ["timestamps"]
