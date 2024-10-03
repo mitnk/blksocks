@@ -9,7 +9,7 @@ const ADDR_TYPE_DOMAIN: u8 = 3;
 pub async fn proxy_conn(
     proxy_addr: &str,
     dest_addr: &str,
-) -> Result<TcpStream, Box<dyn std::error::Error>> {
+) -> Result<TcpStream, Box<dyn std::error::Error + Send + Sync>> {
     let mut stream = match TcpStream::connect(proxy_addr).await {
         Ok(s) => s,
         Err(e) => return Err(format!("to socks5 server: {}", e).into()),
@@ -35,6 +35,7 @@ pub async fn proxy_conn(
     } else {
         ADDR_TYPE_DOMAIN
     };
+
     let mut req = vec![SOCKS_VERSION, CMD_CONNECT, 0, addr_type];
     match addr_type {
         ADDR_TYPE_IPV4 => {
@@ -47,6 +48,7 @@ pub async fn proxy_conn(
         }
         _ => return Err("Unsupported address type".into()),
     }
+
     req.extend_from_slice(&dest_port_bytes);
     stream.write_all(&req).await?;
     let mut buf = [0; 10];
