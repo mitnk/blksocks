@@ -24,7 +24,7 @@ pub fn setup() {
         )
         .write_mode(WriteMode::BufferAndFlush)
         .rotate(
-            flexi_logger::Criterion::Size(2_000_000),  // 2MB
+            flexi_logger::Criterion::Size(5_000_000),  // MB
             flexi_logger::Naming::Numbers,
             flexi_logger::Cleanup::KeepLogFiles(3),
         )

@@ -57,7 +57,7 @@ async fn blk_func() {
             let tops = stats::get_top_ips(&stats);
             log::info!("Top IPs by byte count:");
             for (ip, bytes) in tops {
-                log::info!("{}: {} bytes", ip, bytes);
+                log::info!("- {}: {} bytes", ip, bytes);
             }
         }
     });

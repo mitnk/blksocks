@@ -11,13 +11,22 @@ Only support Linux, not work for Mac etc.
 
 ## Config
 
-> NOTE: May need to `listen` on `0.0.0.0` to make tproxy system work.
+Setup log directory:
+```
+$ sudo mkdir -p /var/log/blksocks
+```
 
+Use `chown` to update its permission if `blksocks` run as non-root users.
+
+
+The config file:
 ```
 $ cat /etc/blksocks/config.toml
-listen = "127.0.0.1:12345"
+listen = "0.0.0.0:12345"
 socks5 = "192.168.1.107:1080"
 ```
+
+> NOTE: May need to `listen` on `0.0.0.0` to make tproxy system work.
 
 Use system env `TOKIO_WORKER_THREADS` to config the worker count, which
 the default is the number of CPU cores.
