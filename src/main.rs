@@ -22,8 +22,39 @@ mod utils;
 
 #[derive(Debug, Deserialize)]
 struct Config {
+    network: NetworkConfig,
+    #[serde(default)]
+    logging: LoggingConfig,
+}
+
+#[derive(Debug, Deserialize)]
+struct NetworkConfig {
     listen: String,
     socks5: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct LoggingConfig {
+    #[serde(default = "default_logging_enabled")]
+    enabled: bool,
+    #[serde(default = "default_file_size_limit_mb")]
+    file_size_limit_mb: u64,
+    #[serde(default = "default_rotate_count")]
+    rotate_count: usize,
+}
+
+fn default_logging_enabled() -> bool { true }
+fn default_file_size_limit_mb() -> u64 { 2 }
+fn default_rotate_count() -> usize { 5 }
+
+impl Default for LoggingConfig {
+    fn default() -> Self {
+        LoggingConfig {
+            enabled: default_logging_enabled(),
+            file_size_limit_mb: default_file_size_limit_mb(),
+            rotate_count: default_rotate_count(),
+        }
+    }
 }
 
 fn main() {
@@ -45,7 +76,7 @@ async fn blk_func() {
         }
     };
 
-    logging::setup();
+    logging::setup(&config.logging);
 
     let packet_stats = Arc::new(Mutex::new(HashMap::<IpAddr, stats::PacketStats>::new()));
     let signal_stats = Arc::clone(&packet_stats);
@@ -64,13 +95,13 @@ async fn blk_func() {
 
     tokio::spawn(expire_old_entries_periodically(Arc::clone(&packet_stats)));
 
-    let addr = config.listen;
+    let addr = config.network.listen;
     let listener = TcpListener::bind(&addr).await.unwrap();
     log::info!("Server started on {}", &addr);
-    log::info!("using proxy: {}", &config.socks5);
+    log::info!("using proxy: {}", &config.network.socks5);
 
     loop {
-        let addr_socks5 = config.socks5.clone();
+        let addr_socks5 = config.network.socks5.clone();
         let packet_stats = Arc::clone(&packet_stats);
 
         let (socket, _) = match listener.accept().await {

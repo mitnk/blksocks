@@ -1,6 +1,6 @@
 [package]
 name = "blksocks"
-version = "1.2.0"
+version = "1.2.1"
 edition = "2021"
 authors = ["Hugo Wang <whgking@gmail.com>"]
 description = "A transparent TCP redirector."
