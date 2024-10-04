@@ -1,6 +1,6 @@
 use std::collections::HashMap;
-use time::{Duration, OffsetDateTime};
 use std::net::IpAddr;
+use time::{Duration, OffsetDateTime};
 
 pub struct PacketStats {
     byte_count: u64,
@@ -25,5 +25,9 @@ pub fn expire_old_entries(stats: &mut HashMap<IpAddr, PacketStats>) {
 pub fn get_top_ips(stats: &HashMap<IpAddr, PacketStats>) -> Vec<(IpAddr, u64)> {
     let mut stats_vec: Vec<_> = stats.iter().collect();
     stats_vec.sort_by(|a, b| b.1.byte_count.cmp(&a.1.byte_count));
-    stats_vec.into_iter().take(80).map(|(&ip, stat)| (ip, stat.byte_count)).collect()
+    stats_vec
+        .into_iter()
+        .take(50)
+        .map(|(&ip, stat)| (ip, stat.byte_count))
+        .collect()
 }

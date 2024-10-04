@@ -1,7 +1,6 @@
 use nix::libc;
 use serde_derive::Deserialize;
 use std::collections::HashMap;
-use std::{env, fs};
 use std::fs::OpenOptions;
 use std::net::IpAddr;
 use std::net::SocketAddr;
@@ -9,8 +8,9 @@ use std::os::fd::AsRawFd;
 use std::path::Path;
 use std::process::exit;
 use std::sync::Arc;
-use tokio::runtime::Runtime;
+use std::{env, fs};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::runtime::Runtime;
 use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::Mutex;
 use tokio::time::{interval, Duration};
@@ -19,6 +19,8 @@ mod logging;
 mod socks5;
 mod stats;
 mod utils;
+
+type SharedStats = Arc<Mutex<HashMap<IpAddr, stats::PacketStats>>>;
 
 #[derive(Debug, Deserialize)]
 struct Config {
@@ -43,50 +45,63 @@ struct LoggingConfig {
     rotate_count: usize,
 }
 
-fn default_logging_enabled() -> bool { true }
-fn default_file_size_limit_mb() -> u64 { 2 }
-fn default_rotate_count() -> usize { 5 }
+fn default_logging_enabled() -> bool {
+    true
+}
+fn default_file_size_limit_mb() -> u64 {
+    2
+}
+fn default_rotate_count() -> usize {
+    5
+}
 
 fn main() {
     if let Err(e) = daemonize() {
-        eprintln!("Error daemonizing: {}", e);
+        eprintln!("daemonizing error: {}", e);
         exit(1);
     }
 
-    let runtime = Runtime::new().unwrap();
-    runtime.block_on(async { blk_func().await; });
+    let runtime = match Runtime::new() {
+        Ok(rt) => rt,
+        Err(e) => {
+            eprintln!("tokio runtime error: {}", e);
+            exit(1);
+        }
+    };
+    runtime.block_on(async {
+        blk_main().await;
+    });
 }
 
-async fn blk_func() {
+async fn blk_main() {
     let config = match read_config("/etc/blksocks/config.toml") {
         Ok(c) => c,
         Err(e) => {
-            println!("config loading error: {}", e);
+            eprintln!("config loading error: {}", e);
             return;
+        }
+    };
+
+    let packet_stats = Arc::new(Mutex::new(HashMap::<IpAddr, stats::PacketStats>::new()));
+    tokio::spawn(expire_old_entries(Arc::clone(&packet_stats)));
+    tokio::spawn(handle_user1(Arc::clone(&packet_stats)));
+
+    let addr = config.network.listen;
+    let listener = match TcpListener::bind(&addr).await {
+        Ok(x) => x,
+        Err(e) => {
+            eprintln!("bind error: {}", e);
+            exit(1);
         }
     };
 
     logging::setup(&config.logging);
 
-    let packet_stats = Arc::new(Mutex::new(HashMap::<IpAddr, stats::PacketStats>::new()));
-    let signal_stats = Arc::clone(&packet_stats);
+    // do not close fds until end of all possible error reports
+    null_fd(0);
+    null_fd(1);
+    null_fd(2);
 
-    tokio::spawn(async move {
-        let mut sigusr1 = signal(SignalKind::user_defined1()).expect("Failed to listen for SIGUSR1");
-        while sigusr1.recv().await.is_some() {
-            let stats = signal_stats.lock().await;
-            let tops = stats::get_top_ips(&stats);
-            log::info!("Top IPs by byte count:");
-            for (ip, bytes) in tops {
-                log::info!("- {}: {} bytes", ip, bytes);
-            }
-        }
-    });
-
-    tokio::spawn(expire_old_entries_periodically(Arc::clone(&packet_stats)));
-
-    let addr = config.network.listen;
-    let listener = TcpListener::bind(&addr).await.unwrap();
     log::info!("Server started on {}", &addr);
     log::info!("using proxy: {}", &config.network.socks5);
 
@@ -130,8 +145,8 @@ async fn handle_client(
         let bytes_copied = tokio::io::copy(&mut client_reader, &mut downstream_writer).await?;
         if let Ok(addr) = dest_addr_clone.parse::<SocketAddr>() {
             let ip = addr.ip();
-            let mut stats = packet_stats_clone.lock().await;
-            stats::update_stats(&mut stats, ip, bytes_copied);
+            let mut pstats = packet_stats_clone.lock().await;
+            stats::update_stats(&mut pstats, ip, bytes_copied);
         }
         Result::<_, Box<dyn std::error::Error + Send + Sync>>::Ok(())
     });
@@ -140,8 +155,8 @@ async fn handle_client(
         let bytes_copied = tokio::io::copy(&mut downstream_reader, &mut client_writer).await?;
         if let Ok(addr) = dest_addr.parse::<SocketAddr>() {
             let ip = addr.ip();
-            let mut stats = packet_stats.lock().await;
-            stats::update_stats(&mut stats, ip, bytes_copied);
+            let mut pstats = packet_stats.lock().await;
+            stats::update_stats(&mut pstats, ip, bytes_copied);
         }
         Result::<_, Box<dyn std::error::Error + Send + Sync>>::Ok(())
     });
@@ -165,14 +180,31 @@ fn read_config<P: AsRef<Path>>(path: P) -> Result<Config, Box<dyn std::error::Er
     Ok(config)
 }
 
-async fn expire_old_entries_periodically(
-    packet_stats: Arc<Mutex<HashMap<IpAddr, stats::PacketStats>>>,
-) {
+async fn expire_old_entries(shared_stats: SharedStats) {
     let mut interval = interval(Duration::from_secs(86_400)); // 24 hours
     loop {
         interval.tick().await;
-        let mut stats = packet_stats.lock().await;
-        stats::expire_old_entries(&mut stats);
+        let mut pstats = shared_stats.lock().await;
+        stats::expire_old_entries(&mut pstats);
+    }
+}
+
+async fn handle_user1(shared_stats: SharedStats) {
+    let mut sigusr1 = match signal(SignalKind::user_defined1()) {
+        Ok(x) => x,
+        Err(e) => {
+            eprintln!("handle usr1 error: {}", e);
+            return;
+        }
+    };
+
+    while sigusr1.recv().await.is_some() {
+        let pstats = shared_stats.lock().await;
+        let tops = stats::get_top_ips(&pstats);
+        log::info!("Top IPs by byte count:");
+        for (ip, bytes) in tops {
+            log::info!("- {}: {} bytes", ip, bytes);
+        }
     }
 }
 
@@ -205,17 +237,26 @@ fn daemonize() -> Result<(), std::io::Error> {
         exit(0);
     }
 
-    unsafe { libc::umask(0); }
+    unsafe {
+        libc::umask(0);
+    }
     env::set_current_dir("/")?;
 
-    let dev_null = OpenOptions::new().read(true).write(true).open("/dev/null")?;
-    let fd = dev_null.as_raw_fd();
-    unsafe {
-        libc::dup2(fd, 0);
-        libc::dup2(fd, 1);
-        libc::dup2(fd, 2);
-        libc::close(fd);
-    }
-
     Ok(())
+}
+
+fn null_fd(fd: i32) {
+    let dev_null = OpenOptions::new().read(true).write(true).open("/dev/null");
+    match dev_null {
+        Ok(dev_null) => {
+            let fd_null = dev_null.as_raw_fd();
+            unsafe {
+                libc::dup2(fd_null, fd);
+                libc::close(fd_null);
+            }
+        }
+        Err(e) => {
+            eprintln!("get dev_null fd error: {}", e);
+        }
+    }
 }

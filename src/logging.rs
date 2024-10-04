@@ -1,10 +1,8 @@
+use crate::LoggingConfig;
 use flexi_logger::{DeferredNow, FileSpec, Logger, Record, WriteMode};
 use std::io::Write;
-use crate::LoggingConfig;
 
-fn custom_format(
-    w: &mut dyn Write, now: &mut DeferredNow, record: &Record,
-) -> std::io::Result<()> {
+fn custom_format(w: &mut dyn Write, now: &mut DeferredNow, record: &Record) -> std::io::Result<()> {
     write!(
         w,
         "[{}][{}] {}",
@@ -38,7 +36,7 @@ pub fn setup(logging_config: &LoggingConfig) {
         .start();
 
     match logger {
-        Ok(_) => {},
+        Ok(_) => {}
         Err(e) => {
             eprintln!("init logging error: {}", e);
             std::process::exit(1);
