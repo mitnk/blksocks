@@ -33,7 +33,7 @@ struct NetworkConfig {
     socks5: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 struct LoggingConfig {
     #[serde(default = "default_logging_enabled")]
     enabled: bool,
@@ -46,16 +46,6 @@ struct LoggingConfig {
 fn default_logging_enabled() -> bool { true }
 fn default_file_size_limit_mb() -> u64 { 2 }
 fn default_rotate_count() -> usize { 5 }
-
-impl Default for LoggingConfig {
-    fn default() -> Self {
-        LoggingConfig {
-            enabled: default_logging_enabled(),
-            file_size_limit_mb: default_file_size_limit_mb(),
-            rotate_count: default_rotate_count(),
-        }
-    }
-}
 
 fn main() {
     if let Err(e) = daemonize() {
